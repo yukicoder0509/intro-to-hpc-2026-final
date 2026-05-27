@@ -68,6 +68,22 @@ uv pip freeze > requirements.txt   # update lockfile
 
 ---
 
+## Important: never run heavy work on the login node
+
+The login node is shared infrastructure. Running training, benchmarks, or
+large data-processing jobs directly will consume its CPU/memory and affect
+all other users. **Always submit heavy work via `sbatch`.**
+
+What counts as heavy work:
+- Any `python bench.py` / `python experiments/bench.py` run
+- Any `python prepare_data.py` run on a full dataset
+- Any multi-GPU or distributed job
+
+What is safe on the login node:
+- Editing files, `git` commands, `sbatch`, `squeue`, `wandb sync`
+- `python model.py` (prints param counts, no compute)
+- Quick syntax / import checks (`python -c "import model"`)
+
 ## Job submission
 
 All SLURM scripts activate `.venv` automatically — no manual activation needed

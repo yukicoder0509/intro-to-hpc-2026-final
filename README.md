@@ -7,6 +7,16 @@ See [plan.md](plan.md) for the full experiment design.
 
 ---
 
+## Important: never run heavy work on the login node
+
+The login node is shared. Running training or data-processing jobs directly
+will consume its resources and affect all other users.
+
+> **Always submit heavy work via `sbatch`.** This includes any benchmark run,
+> data tokenisation, or multi-GPU job. The only things safe to run directly on
+> the login node are: `git` commands, `sbatch`/`squeue`, `wandb sync`, and
+> lightweight import checks (`python model.py`).
+
 ## Quick start
 
 ### 1. Install uv
@@ -44,17 +54,8 @@ uv pip install tiktoken "wandb>=0.17"
 
 ### 4. Prepare training data
 
-Run as a SLURM job (recommended — uses more CPU cores):
-
 ```bash
 sbatch prepare-data.slurm
-```
-
-Or run interactively:
-
-```bash
-source .venv/bin/activate
-python prepare_data.py --output_dir data
 ```
 
 ### 5. Run the B0 baseline
