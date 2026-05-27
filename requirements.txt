@@ -1,0 +1,19 @@
+# Core ML
+torch
+datasets
+transformers
+accelerate
+
+# Tokenisation (requires Python >=3.8; tiktoken preferred, HF tokenizer as fallback)
+tiktoken
+
+# tinygrad — install from GitHub (PyPI has only old 0.2.x)
+# uv pip install git+https://github.com/tinygrad/tinygrad.git
+# (pinned at 0.13.0 as of 2026-05-27)
+
+# Experiment tracking
+wandb>=0.17
+
+# Build helpers
+Cython
+setuptools_rust
