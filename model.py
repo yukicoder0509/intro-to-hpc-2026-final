@@ -38,20 +38,12 @@ class CausalSelfAttention:
 
     def __call__(self, x: Tensor) -> Tensor:
         B, T, C = x.shape
-        qkv = self.qkv(x)
-        q, k, v = qkv[..., :C], qkv[..., C:2*C], qkv[..., 2*C:]
+        q, k, v = self.qkv(x).chunk(3, dim=-1)
         q = q.reshape(B, T, self.n_heads, self.hd).transpose(1, 2)  # (B, H, T, hd)
         k = k.reshape(B, T, self.n_heads, self.hd).transpose(1, 2)
         v = v.reshape(B, T, self.n_heads, self.hd).transpose(1, 2)
-        scale = 1.0 / math.sqrt(self.hd)
-        att = q.matmul(k.transpose(-2, -1)) * scale              # (B, H, T, T)
-        # Upper-triangle positions (future tokens) get a large negative bias.
-        # Using -1e9 instead of -inf avoids NaN in float16 softmax.
-        causal_mask = Tensor.ones(T, T).tril()
-        att = att + (1 - causal_mask) * (-1e9)
-        att = att.softmax(-1)
-        o = att.matmul(v).transpose(1, 2).reshape(B, T, C)
-        return self.proj(o)
+        o = q.scaled_dot_product_attention(k, v, is_causal=True)    # fused, causal
+        return self.proj(o.transpose(1, 2).reshape(B, T, C))
 
 
 class Block:

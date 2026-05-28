@@ -62,8 +62,7 @@ def evaluate(model: GPT, loader: DataLoader, steps: int) -> float:
     total = 0.0
     for _ in range(steps):
         x, y = loader.get_batch()
-        logits = model(x)
-        loss = logits.reshape(-1, logits.shape[-1]).sparse_categorical_crossentropy(y.reshape(-1))
+        loss = model(x).sparse_categorical_crossentropy(y)
         total += loss.numpy().item()
     Tensor.training = True
     return total / steps
@@ -114,8 +113,7 @@ def main() -> None:
         step_loss = 0.0
         for _ in range(args.grad_accum):
             x, y = train_loader.get_batch()
-            logits = model(x)
-            loss = logits.reshape(-1, cfg.vocab).sparse_categorical_crossentropy(y.reshape(-1))
+            loss = model(x).sparse_categorical_crossentropy(y)
             (loss / args.grad_accum).backward()
             step_loss += loss.numpy().item()
         opt.step()

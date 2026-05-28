@@ -28,7 +28,7 @@ import subprocess
 import time
 
 import numpy as np
-from tinygrad import Tensor, dtypes
+from tinygrad import Tensor, TinyJit, dtypes
 from tinygrad.device import Device
 from tinygrad.nn.optim import AdamW
 from tinygrad.nn.state import get_parameters
@@ -173,25 +173,33 @@ def main() -> None:
         tokens_per_step, args.warmup, args.steps - args.warmup))
     print("=" * 60)
 
+    # ── JIT-able step (plan §3 step.py) ──────────────────────────────────
+    # @TinyJit captures the kernel sequence on calls 1-2, then replays it.
+    # JIT=0 env var disables replay so both B0 (no-JIT) and E1 (JIT) use
+    # the same code path — only the env var differs.
+    @TinyJit
+    def train_step(x: Tensor, y: Tensor) -> Tensor:
+        Tensor.training = True
+        inp = x.half() if use_fp16 else x
+        loss = model(inp).sparse_categorical_crossentropy(y)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        return loss.realize()
+
     # ── benchmark loop ────────────────────────────────────────────────────
     dts: list[float] = []
-    Tensor.training = True
 
     for i in range(args.steps):
         x, y = loader.get_batch()
 
         sync()                        # flush any prior GPU work before starting the clock
         t0 = time.perf_counter()
-
-        opt.zero_grad()
-        logits = model(x)
-        loss = logits.reshape(-1, cfg.vocab).sparse_categorical_crossentropy(y.reshape(-1))
-        loss.backward()
-        opt.step()
+        loss = train_step(x, y)
+        loss_val = loss.numpy().item()  # forces completion
         sync()                        # wait for GPU to finish before stopping the clock
 
         dt = (time.perf_counter() - t0) * 1e3
-        loss_val = loss.numpy().item()
 
         if i < args.warmup:
             print("  warmup {:2d} | {:7.1f} ms | loss={:.4f}".format(i, dt, loss_val))
