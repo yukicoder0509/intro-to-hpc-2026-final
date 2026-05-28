@@ -92,9 +92,6 @@ train-gpt2/
 │   └── b0_baseline/
 │       └── run.slurm             SLURM: B0 naïve baseline run
 │
-├── gpt2-train.slurm              legacy: HF Wikipedia fine-tune
-├── train_gpt2_wikipedia.py       legacy: HF training script
-│
 └── .venv/                        Python 3.11 venv (created by uv)
 ```
 
