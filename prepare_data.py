@@ -55,6 +55,8 @@ def main():
     print(f"Tokenizer : {args.tokenizer}")
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     tokenizer.pad_token = tokenizer.eos_token
+    # We pack all tokens into a flat stream; individual text lengths don't matter.
+    tokenizer.model_max_length = int(1e30)
 
     print(f"Dataset   : {args.dataset}" +
           (f" / {args.dataset_config}" if args.dataset_config else ""))
@@ -70,17 +72,17 @@ def main():
         print(f"Capped to {n:,} examples")
 
     split = ds.train_test_split(test_size=args.val_fraction, seed=args.seed)
-    train_data = list(split["train"])
-    val_data = list(split["test"])
+    train_ds = split["train"]
+    val_ds   = split["test"]
 
-    print(f"Tokenizing {len(train_data):,} train / {len(val_data):,} val examples …")
+    print(f"Tokenizing {len(train_ds):,} train / {len(val_ds):,} val examples …")
 
     col = args.text_column
     train_path = os.path.join(args.output_dir, "train.bin")
     val_path = os.path.join(args.output_dir, "val.bin")
 
-    n_train = tokenize_and_save(train_data, tokenizer, col, train_path)
-    n_val = tokenize_and_save(val_data, tokenizer, col, val_path)
+    n_train = tokenize_and_save(train_ds, tokenizer, col, train_path)
+    n_val = tokenize_and_save(val_ds, tokenizer, col, val_path)
 
     print(f"train.bin : {n_train:,} tokens  ({n_train * 2 / 1e6:.1f} MB)")
     print(f"val.bin   : {n_val:,} tokens  ({n_val * 2 / 1e6:.1f} MB)")

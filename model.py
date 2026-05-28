@@ -1,5 +1,5 @@
 """
-model.py — decoder-only GPT in PyTorch, matching the plan's architecture spec.
+model.py — decoder-only GPT in tinygrad, matching the plan's architecture spec.
 
 Three fixed configs (plan §3):
   TINY: d=384, L=6, H=6, ctx=256  (~11M params)  — fast iteration
@@ -9,9 +9,8 @@ Three fixed configs (plan §3):
 
 from dataclasses import dataclass
 import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from tinygrad import Tensor, nn
+from tinygrad.nn.state import get_parameters
 
 
 @dataclass
@@ -30,75 +29,66 @@ CONFIGS = {
 }
 
 
-class CausalSelfAttention(nn.Module):
-    def __init__(self, dim, n_heads):
-        super().__init__()
+class CausalSelfAttention:
+    def __init__(self, dim: int, n_heads: int):
         self.n_heads = n_heads
-        self.hd = dim // n_heads
-        self.qkv = nn.Linear(dim, 3 * dim, bias=False)
+        self.hd   = dim // n_heads
+        self.qkv  = nn.Linear(dim, 3 * dim, bias=False)
         self.proj = nn.Linear(dim, dim, bias=False)
 
-    def forward(self, x):
+    def __call__(self, x: Tensor) -> Tensor:
         B, T, C = x.shape
-        q, k, v = self.qkv(x).chunk(3, dim=-1)
-        q = q.view(B, T, self.n_heads, self.hd).transpose(1, 2)
-        k = k.view(B, T, self.n_heads, self.hd).transpose(1, 2)
-        v = v.view(B, T, self.n_heads, self.hd).transpose(1, 2)
+        qkv = self.qkv(x)
+        q, k, v = qkv[..., :C], qkv[..., C:2*C], qkv[..., 2*C:]
+        q = q.reshape(B, T, self.n_heads, self.hd).transpose(1, 2)  # (B, H, T, hd)
+        k = k.reshape(B, T, self.n_heads, self.hd).transpose(1, 2)
+        v = v.reshape(B, T, self.n_heads, self.hd).transpose(1, 2)
         scale = 1.0 / math.sqrt(self.hd)
-        att = (q @ k.transpose(-2, -1)) * scale
-        causal_mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
-        att = att.masked_fill(~causal_mask, float('-inf'))
-        att = F.softmax(att.float(), dim=-1).to(x.dtype)
-        o = att @ v
-        return self.proj(o.transpose(1, 2).contiguous().view(B, T, C))
+        att = q.matmul(k.transpose(-2, -1)) * scale              # (B, H, T, T)
+        # Upper-triangle positions (future tokens) get a large negative bias.
+        # Using -1e9 instead of -inf avoids NaN in float16 softmax.
+        causal_mask = Tensor.ones(T, T).tril()
+        att = att + (1 - causal_mask) * (-1e9)
+        att = att.softmax(-1)
+        o = att.matmul(v).transpose(1, 2).reshape(B, T, C)
+        return self.proj(o)
 
 
-class Block(nn.Module):
-    def __init__(self, dim, n_heads):
-        super().__init__()
-        self.ln1 = nn.LayerNorm(dim)
-        self.ln2 = nn.LayerNorm(dim)
+class Block:
+    def __init__(self, dim: int, n_heads: int):
+        self.ln1  = nn.LayerNorm(dim)
+        self.ln2  = nn.LayerNorm(dim)
         self.attn = CausalSelfAttention(dim, n_heads)
-        self.fc1 = nn.Linear(dim, 4 * dim)
-        self.fc2 = nn.Linear(4 * dim, dim)
+        self.fc1  = nn.Linear(dim, 4 * dim)
+        self.fc2  = nn.Linear(4 * dim, dim)
 
-    def forward(self, x):
+    def __call__(self, x: Tensor) -> Tensor:
         x = x + self.attn(self.ln1(x))
-        x = x + self.fc2(F.gelu(self.fc1(self.ln2(x))))
+        x = x + self.fc2(self.fc1(self.ln2(x)).gelu())
         return x
 
 
-class GPT(nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-        self.cfg = cfg
-        self.tok = nn.Embedding(cfg.vocab, cfg.dim)
-        self.pos = nn.Embedding(cfg.ctx, cfg.dim)
-        self.blocks = nn.ModuleList([Block(cfg.dim, cfg.n_heads) for _ in range(cfg.n_layers)])
-        self.lnf = nn.LayerNorm(cfg.dim)
-        self.head = nn.Linear(cfg.dim, cfg.vocab, bias=False)
+class GPT:
+    def __init__(self, cfg: GPTConfig):
+        self.cfg    = cfg
+        self.tok    = nn.Embedding(cfg.vocab, cfg.dim)
+        self.pos    = nn.Embedding(cfg.ctx, cfg.dim)
+        self.blocks = [Block(cfg.dim, cfg.n_heads) for _ in range(cfg.n_layers)]
+        self.lnf    = nn.LayerNorm(cfg.dim)
+        self.head   = nn.Linear(cfg.dim, cfg.vocab, bias=False)
         self.head.weight = self.tok.weight  # weight tying
 
-        self._init_weights()
-
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, (nn.Linear, nn.Embedding)):
-                nn.init.normal_(m.weight, mean=0.0, std=0.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.zeros_(m.bias)
-
-    def forward(self, idx):
+    def __call__(self, idx: Tensor) -> Tensor:
         B, T = idx.shape
-        pos = torch.arange(T, device=idx.device)
+        pos = Tensor.arange(T)
         x = self.tok(idx) + self.pos(pos)
         for block in self.blocks:
             x = block(x)
         return self.head(self.lnf(x))
 
-    def n_params(self):
-        # Exclude position embedding from param count (matches plan's ~6ND formula)
-        return sum(p.numel() for p in self.parameters()) - self.pos.weight.numel()
+    def n_params(self) -> int:
+        # Exclude position embedding from count (matches plan's ~6ND formula)
+        return sum(math.prod(p.shape) for p in get_parameters(self)) - math.prod(self.pos.weight.shape)
 
 
 if __name__ == "__main__":
