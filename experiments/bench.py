@@ -154,6 +154,8 @@ def main() -> None:
     wandb_mode = args.wandb_mode or os.getenv("WANDB_MODE", "online")
     run = None
     if HAS_WANDB and wandb_mode != "disabled":
+        if wandb_mode == "online":
+            _wandb.login(key=os.getenv("WANDB_API_KEY"))
         run = _wandb.init(
             project="hpc-gpt-tinygrad",
             group=args.exp,

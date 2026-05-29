@@ -16,7 +16,7 @@
 source .venv/bin/activate
 
 # B0 — naïve baseline (plan §4.0):
-#   BASE 124M, 1 GPU, FP32, no JIT, no BEAM
+#   BASE 124M, 1 GPU, FP32, JIT, no BEAM
 #   batch=4, ctx=512 → 2048 tokens/step
 #   3 warmup + 30 measured steps  (--steps 33)
 #
@@ -25,8 +25,14 @@ source .venv/bin/activate
 
 REP=${1:-0}
 
-WANDB_MODE=offline \
-JIT=0 \
+# Load WANDB_API_KEY from .env if not already set
+if [ -z "${WANDB_API_KEY}" ] && [ -f ".env" ]; then
+  export WANDB_API_KEY=$(grep -E '^WANDB_API_KEY=' .env | cut -d'=' -f2-)
+fi
+
+WANDB_MODE=online \
+WANDB_API_KEY=${WANDB_API_KEY} \
+JIT=1 \
 BEAM=0 \
 python experiments/bench.py \
   --config  BASE \

@@ -52,13 +52,23 @@ uv pip install git+https://github.com/tinygrad/tinygrad.git
 uv pip install tiktoken "wandb>=0.17"
 ```
 
-### 4. Prepare training data
+### 4. Configure credentials
+
+Create a `.env` file in the project root with your W&B API key:
+
+```bash
+echo "WANDB_API_KEY=your_key_here" > .env
+```
+
+The SLURM job scripts load this automatically. You can find your key at <https://wandb.ai/authorize>.
+
+### 5. Prepare training data
 
 ```bash
 sbatch prepare-data.slurm
 ```
 
-### 5. Run the B0 baseline
+### 6. Run the B0 baseline
 
 Submit 5 repetitions (plan §6 requires ≥5 runs per config):
 
