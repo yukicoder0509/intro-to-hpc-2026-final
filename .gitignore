@@ -31,3 +31,6 @@ slurm-*.out
 # Editor / OS
 .DS_Store
 *.swp
+
+# Ignore .env file containing sensitive information
+.env
